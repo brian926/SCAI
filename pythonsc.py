@@ -7,7 +7,7 @@ from sc2 import NEXUS, PROBE, PYLON, ASSIMLATOR, ASSIMLATOR, GATEWAY, \
 CYBERNETICSCORE, STALKER
 import random
 
-Class SentdeBot(sc2.BotAI):
+class SentdeBot(sc2.BotAI):
 	async def on_step(self, iteration):
 
 		# What to do every step
