@@ -1,1 +1,4 @@
 .vscode/settings.json
+./train_data/**
+.python-sc2
+
