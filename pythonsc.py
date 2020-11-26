@@ -9,22 +9,31 @@ import random
 import cv2
 import numpy as np
 import time
+import keras
 
 HEADLESS = False
 
 class SentdeBot(sc2.BotAI):
-	def __init__(self):
+	def __init__(self, use_model=False):
 		self.ITERATIONS_PER_MINUTE = 165
 		self.MAX_WORKERS = 50
 		self.do_something_after = 0
+		self.use_model = use_model
+
 		self.train_data = []
+		if self.use_model:
+			print("USING MODEL")
+			self.model = keras.models.load_model("BasicCNN-10-epochs-0.001-LR-STAGE1")
 
 	def on_end(self, game_result):
 		print('--- on_end called ---')
-		print(game_result)
+		print(game_result, self.use_model)
 
-		if game_result == Result.Victory:
-			np.save("train_data/{}.npy".format(str(int(time.time()))), np.array(self.train_data))
+		with open("log.txt", "a") as f:
+			if self.use_model:
+				f.write("Model {}\n".format(game_result))
+			else:
+				f.write("Random {}\n".format(game_result))
 
 	async def on_step(self, iteration):
 		self.iteration = iteration
@@ -46,8 +55,8 @@ class SentdeBot(sc2.BotAI):
 		x = enemy_start_location[0]
 		y = enemy_start_location[1]
 
-		x += ((random.randrange(-20, 20))/100) * enemy_start_location[0]
-		y += ((random.randrange(-20, 20))/100) * enemy_start_location[1]
+		x += ((random.randrange(-20, 20))/100) * self.game_info.map_size[0]
+		y += ((random.randrange(-20, 20))/100) * self.game_info.map_size[1]
 
 		if x < 0:
 			x = 0
@@ -80,11 +89,12 @@ class SentdeBot(sc2.BotAI):
 		draw_dict ={
 			NEXUS: [15, (0, 255, 0)],
 			PYLON: [3, (20,2235, 0)],
+			PROBE: [1, (55, 200, 0)],
 			ASSIMILATOR: [1, (55, 200, 0)],
 			GATEWAY: [3, (200, 100, 0)],
 			CYBERNETICSCORE: [3, (150, 150, 0)],
 			STARGATE: [5, (255, 0, 0)],
-			VOIDRAY: [3, (255, 199, 0)],
+			#VOIDRAY: [3, (255, 199, 0)],
 			ROBOTICSFACILITY: [5, (215, 155, 0)],
 		}
 
@@ -152,10 +162,7 @@ class SentdeBot(sc2.BotAI):
 
 		# Flip horizontally to make our final fix in visual representation
 		self.flipped = cv2.flip(game_data, 0)
-		if not HEADLESS:
-			resized = cv2.resize(self.flipped, dsize=None, fx=2, fy=2)
-			cv2.imshow('Intel', resized)
-			cv2.waitKey(1)
+		resized = cv2.resize(self.flipped, dsize=None, fx=2, fy=2)
 
 	async def build_workers(self):
 		if (len(self.units(NEXUS)) * 16 ) > len(self.units(PROBE)) and len(self.units(PROBE)) < self.MAX_WORKERS:
@@ -183,8 +190,11 @@ class SentdeBot(sc2.BotAI):
 					await self.do(worker.build(ASSIMILATOR, vaspene))
 
 	async def expand(self):
-		if self.units(NEXUS).amount < (self.iteration / self.ITERATIONS_PER_MINUTE) and self.can_afford(NEXUS):
-			await self.expand_now()
+		try:
+			if self.units(NEXUS).amount < (self.iteration / self.ITERATIONS_PER_MINUTE) and self.can_afford(NEXUS):
+				await self.expand_now()
+		except Exception as e:
+			print(str(e))
 
 	async def offensive_force_buildings(self):
 		#print(self.iteration / self.ITERATIONS_PER_MINUTE)
@@ -224,36 +234,49 @@ class SentdeBot(sc2.BotAI):
 
 	async def attack(self):
 		if len(self.units(VOIDRAY).idle) > 0:
-			choice = random.randrange(0, 4)
+			
 			target = False
 			if self.iteration > self.do_something_after:
+				if self.use_model:
+					prediction = self.model.predict([self.flipped.reshape([-1, 176, 200, 3])])
+					choice = np.argmax(prediction[0])
+
+					choice_dict = {0: "No Attack!",
+									1: "Attack close to our nexus!",
+									2: "Attack Enemy Structure",
+									3: "Attack Enemy Start!"
+									}
+					print("Choice #{}:{}".format(choice, choice_dict[choice]))
+
+				else:
+					choice = random.randrange(0,4)
+
 				if choice == 0:
-					# Don't attack
-					wait = random.randrange(20, 165)
+					wait = random.randrange(20,165)
 					self.do_something_after = self.iteration + wait
+					
 				elif choice == 1:
-					# Attack unit closest to Nexus
 					if len(self.known_enemy_units) > 0:
 						target = self.known_enemy_units.closest_to(random.choice(self.units(NEXUS)))
+						
 				elif choice == 2:
-					# Attack enemy structures
 					if len(self.known_enemy_structures) > 0:
 						target = random.choice(self.known_enemy_structures)
+						
 				elif choice == 3:
-					# Attack enemy's start
 					target = self.enemy_start_locations[0]
-				
+					
 				if target:
 					for vr in self.units(VOIDRAY).idle:
 						await self.do(vr.attack(target))
+						
 				y = np.zeros(4)
 				y[choice] = 1
-				print(y)
 				self.train_data.append([y,self.flipped])
 
 
-
-run_game(maps.get("AbyssalReefLE"), [
-	Bot(Race.Protoss, SentdeBot()),
-	Computer(Race.Terran, Difficulty.Easy)
-], realtime=False)
+for i in range(100):
+	run_game(maps.get("AbyssalReefLE"), [
+		Bot(Race.Protoss, SentdeBot()),
+		Computer(Race.Terran, Difficulty.Hard)
+	], realtime=False)

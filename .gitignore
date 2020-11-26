@@ -2,5 +2,5 @@
 .python-sc2
 train_data/*
 venv/*
-logs/*
+log*
 Basic*/*
