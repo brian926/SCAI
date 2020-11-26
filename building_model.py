@@ -1,4 +1,4 @@
-from tensorflow import keras
+import keras
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten
 from keras.layers import Conv2D, MaxPooling2D
@@ -35,7 +35,7 @@ model.add(Dropout(0.5))
 model.add(Dense(4, activation='softmax'))
 
 learning_rate = 0.001
-opt = keras.optimizers.adam(lr=learning_rate, decay=1e-6)
+opt = keras.optimizers.Adam(lr=learning_rate, decay=1e-6)
 
 model.compile(loss='categorical_crossentropy',
             optimizer=opt,
@@ -74,7 +74,7 @@ for i in range(hm_epochs):
     random.shuffle(all_files)
 
     while not_maximum:
-        print("WORKING ON {}:{}",format(current, current+increment))
+        print("WORKING ON {}:{}".format(current, current+increment))
         no_attacks = []
         attack_closest_to_nexus = []
         attack_enemy_structures = []
@@ -82,7 +82,7 @@ for i in range(hm_epochs):
 
         for file in all_files[current:current+increment]:
             full_path = os.path.join(train_data_dir, file)
-            data = np.load(full_path)
+            data = np.load(full_path, allow_pickle=True)
             data = list(data)
             for d in data:
                 choice = np.argmax(d[0])
