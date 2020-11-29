@@ -15,7 +15,7 @@ HEADLESS = False
 
 class SentdeBot(sc2.BotAI):
 	def __init__(self, use_model=False):
-		self.ITERATIONS_PER_MINUTE = 165
+		#self.ITERATIONS_PER_MINUTE = 165
 		self.MAX_WORKERS = 50
 		self.do_something_after = 0
 		self.use_model = use_model
@@ -36,7 +36,10 @@ class SentdeBot(sc2.BotAI):
 				f.write("Random {}\n".format(game_result))
 
 	async def on_step(self, iteration):
-		self.iteration = iteration
+		#self.iteration = iteration
+		
+		self.time = (self.state.game_loop/22.4) / 60
+		print('Time:', self.time)
 
 		# What to do every step
 		# In SCAI/bot_ai.py
@@ -164,6 +167,14 @@ class SentdeBot(sc2.BotAI):
 		self.flipped = cv2.flip(game_data, 0)
 		resized = cv2.resize(self.flipped, dsize=None, fx=2, fy=2)
 
+		if not HEADLESS:
+			if self.use_model:
+				cv2.imshow('Model Intel', resized)
+				cv2.waitKey(1)
+		else:
+			cv2.imshow('Random Intel', resized)
+			cv2.waitKey(1)
+
 	async def build_workers(self):
 		if (len(self.units(NEXUS)) * 16 ) > len(self.units(PROBE)) and len(self.units(PROBE)) < self.MAX_WORKERS:
 			for nexus in self.units(NEXUS).ready.noqueue:
@@ -179,7 +190,7 @@ class SentdeBot(sc2.BotAI):
 
 	async def build_assimilator(self):
 		for nexus in self.units(NEXUS).ready:
-			vaspenes = self.state.vespene_geyser.closer_than(20.0, nexus)
+			vaspenes = self.state.vespene_geyser.closer_than(15.0, nexus)
 			for vaspene in vaspenes:
 				if not self.can_afford(ASSIMILATOR):
 					break
@@ -191,7 +202,7 @@ class SentdeBot(sc2.BotAI):
 
 	async def expand(self):
 		try:
-			if self.units(NEXUS).amount < (self.iteration / self.ITERATIONS_PER_MINUTE) and self.can_afford(NEXUS):
+			if self.units(NEXUS).amount < self.time/2 and self.can_afford(NEXUS):
 				await self.expand_now()
 		except Exception as e:
 			print(str(e))
@@ -215,7 +226,7 @@ class SentdeBot(sc2.BotAI):
 						await self.build(ROBOTICSFACILITY, near=pylon)
 
 			if self.units(CYBERNETICSCORE).ready.exists:
-				if len(self.units(STARGATE)) < (self.iteration / self.ITERATIONS_PER_MINUTE):
+				if len(self.units(STARGATE)) < self.time:
 					if self.can_afford(STARGATE) and not self.already_pending(STARGATE):
 						await self.build(STARGATE, near = pylon)
 
@@ -236,24 +247,16 @@ class SentdeBot(sc2.BotAI):
 		if len(self.units(VOIDRAY).idle) > 0:
 			
 			target = False
-			if self.iteration > self.do_something_after:
+			if self.time > self.do_something_after:
 				if self.use_model:
 					prediction = self.model.predict([self.flipped.reshape([-1, 176, 200, 3])])
 					choice = np.argmax(prediction[0])
-
-					choice_dict = {0: "No Attack!",
-									1: "Attack close to our nexus!",
-									2: "Attack Enemy Structure",
-									3: "Attack Enemy Start!"
-									}
-					print("Choice #{}:{}".format(choice, choice_dict[choice]))
-
 				else:
 					choice = random.randrange(0,4)
 
 				if choice == 0:
-					wait = random.randrange(20,165)
-					self.do_something_after = self.iteration + wait
+					wait = random.randrange(7, 100)/100
+					self.do_something_after = self.time + wait
 					
 				elif choice == 1:
 					if len(self.known_enemy_units) > 0:
@@ -277,6 +280,6 @@ class SentdeBot(sc2.BotAI):
 
 for i in range(100):
 	run_game(maps.get("AbyssalReefLE"), [
-		Bot(Race.Protoss, SentdeBot()),
+		Bot(Race.Protoss, SentdeBot(use_model=False)),
 		Computer(Race.Terran, Difficulty.Hard)
 	], realtime=False)
