@@ -8,7 +8,9 @@ CYBERNETICSCORE, STALKER, STARGATE, VOIDRAY, OBSERVER, ROBOTICSFACILITY
 import random
 import cv2
 import numpy as np
+import os
 import time
+import math
 import keras
 
 HEADLESS = False
@@ -19,6 +21,7 @@ class SentdeBot(sc2.BotAI):
 		self.MAX_WORKERS = 50
 		self.do_something_after = 0
 		self.use_model = use_model
+		self.scouts_and_spots = {}
 
 		self.train_data = []
 		if self.use_model:
@@ -36,13 +39,11 @@ class SentdeBot(sc2.BotAI):
 				f.write("Random {}\n".format(game_result))
 
 	async def on_step(self, iteration):
-		#self.iteration = iteration
 		
-		self.time = (self.state.game_loop/22.4) / 60
-		print('Time:', self.time)
-
+		self.setTime = (self.state.game_loop/22.4) / 60
 		# What to do every step
 		# In SCAI/bot_ai.py
+		await self.build_scout()
 		await self.scout()
 		await self.distribute_workers()
 		await self.build_workers()
@@ -58,8 +59,8 @@ class SentdeBot(sc2.BotAI):
 		x = enemy_start_location[0]
 		y = enemy_start_location[1]
 
-		x += ((random.randrange(-20, 20))/100) * self.game_info.map_size[0]
-		y += ((random.randrange(-20, 20))/100) * self.game_info.map_size[1]
+		x += random.randrange(-5,5)
+		y += random.randrange(-5,5)
 
 		if x < 0:
 			x = 0
@@ -73,18 +74,70 @@ class SentdeBot(sc2.BotAI):
 		go_to = position.Point2(position.Pointlike((x,y)))
 		return go_to
 
-	async def scout(self):
-		if len(self.units(OBSERVER)) > 0:
-			scout = self.units(OBSERVER)[0]
-			if scout.is_idle:
-				enemy_location = self.enemy_start_locations[0]
-				move_to = self.random_location_variance(enemy_location)
-				print(move_to)
-				await self.do(scout.move(move_to))
-		else:
+	async def build_scout(self):
+		if len(self.units(OBSERVER)) < math.floor(self.setTime / 3):
 			for rf in self.units(ROBOTICSFACILITY).ready.noqueue:
+				print(len(self.units(OBSERVER)), self.setTime / 3)
 				if self.can_afford(OBSERVER) and self.supply_left > 0:
 					await self.do(rf.train(OBSERVER))
+
+	async def scout(self):
+		self.expand_dis_dir = {}
+
+		for el in self.expansion_locations:
+			distance_to_enemy_start = el.distance_to(self.enemy_start_locations[0])
+			self.expand_dis_dir[distance_to_enemy_start] = el
+		
+		self.ordered_exp_distances = sorted(k for k in self.expand_dis_dir)
+
+		existing_ids = [unit.tag for unit in self.units]
+		to_be_removed = []
+		for noted_scout in self.scouts_and_spots:
+			if noted_scout not in existing_ids:
+				to_be_removed.append(noted_scout)
+
+		for scout in to_be_removed:
+			del self.scouts_and_spots[scout]
+
+		if len(self.units(ROBOTICSFACILITY).ready) == 0:
+			unit_type = PROBE
+			unit_limit = 1
+		else:
+			unit_type = OBSERVER
+			unit_limit = 15
+
+		assign_scout = True
+
+		if unit_type == PROBE:
+			for unit in self.units(PROBE):
+				if unit.tag in self.scouts_and_spots:
+					assign_scout = False
+
+		if assign_scout:
+			if len(self.units(unit_type).idle) > 0:
+				for obs in self.units(unit_type).idle[:unit_limit]:
+					if obs.tag not in self.scouts_and_spots:
+						for dist in self.ordered_exp_distances:
+							try:
+								location = next(value for key, value in self.expand_dis_dir.items() if key == dist)
+								active_locations = [self.scouts_and_spots[k] for k in self.scouts_and_spots]
+
+								if location not in active_locations:
+									if unit_type == PROBE:
+										for unit in self.units(PROBE):
+											if unit.tag in self.scouts_and_spots:
+												continue
+
+									await self.do(obs.move(location))
+									self.scouts_and_spots[obs.tag] = location
+									break
+							except Exception as e:
+								pass
+
+		for obs in self.units(unit_type):
+			if obs.tag in self.scouts_and_spots:
+				if obs in [probe for probe in self.units(PROBE)]:
+					await self.do(obs.move(self.random_location_variance(self.scouts_and_spots[obs.tag])))
 
 	async def intel(self):
 		game_data = np.zeros((self.game_info.map_size[1], self.game_info.map_size[0], 3), np.uint8)
@@ -106,7 +159,7 @@ class SentdeBot(sc2.BotAI):
 				pos = unit.position
 				cv2.circle(game_data, (int(pos[0]), int(pos[1])), draw_dict[unit_type][0], draw_dict[unit_type][1], -1)
 
-		main_base_names = ["nexus", "commandcenter", "hatchery"]
+		main_base_names = ["nexus", "commandcenter", "orbitalcommand", "planetaryfortress", "hatchery"]
 		for enemy_building in self.known_enemy_structures:
 			pos = enemy_building.position
 			if enemy_building.name.lower() not in main_base_names:
@@ -202,7 +255,7 @@ class SentdeBot(sc2.BotAI):
 
 	async def expand(self):
 		try:
-			if self.units(NEXUS).amount < self.time/2 and self.can_afford(NEXUS):
+			if self.units(NEXUS).amount < self.setTime/2 and self.can_afford(NEXUS):
 				await self.expand_now()
 		except Exception as e:
 			print(str(e))
@@ -226,7 +279,7 @@ class SentdeBot(sc2.BotAI):
 						await self.build(ROBOTICSFACILITY, near=pylon)
 
 			if self.units(CYBERNETICSCORE).ready.exists:
-				if len(self.units(STARGATE)) < self.time:
+				if len(self.units(STARGATE)) < self.setTime:
 					if self.can_afford(STARGATE) and not self.already_pending(STARGATE):
 						await self.build(STARGATE, near = pylon)
 
@@ -247,7 +300,7 @@ class SentdeBot(sc2.BotAI):
 		if len(self.units(VOIDRAY).idle) > 0:
 			
 			target = False
-			if self.time > self.do_something_after:
+			if self.setTime > self.do_something_after:
 				if self.use_model:
 					prediction = self.model.predict([self.flipped.reshape([-1, 176, 200, 3])])
 					choice = np.argmax(prediction[0])
@@ -256,7 +309,7 @@ class SentdeBot(sc2.BotAI):
 
 				if choice == 0:
 					wait = random.randrange(7, 100)/100
-					self.do_something_after = self.time + wait
+					self.do_something_after = self.setTime + wait
 					
 				elif choice == 1:
 					if len(self.known_enemy_units) > 0:
@@ -275,11 +328,11 @@ class SentdeBot(sc2.BotAI):
 						
 				y = np.zeros(4)
 				y[choice] = 1
-				self.train_data.append([y,self.flipped])
+				self.train_data.append([y, self.flipped])
 
 
 for i in range(100):
 	run_game(maps.get("AbyssalReefLE"), [
 		Bot(Race.Protoss, SentdeBot(use_model=False)),
-		Computer(Race.Terran, Difficulty.Hard)
+		Computer(Race.Terran, Difficulty.Medium)
 	], realtime=False)
