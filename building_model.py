@@ -1,7 +1,7 @@
 import tensorflow as tf
 import keras.backend.tensorflow_backend as backend
 import keras
-from tensorflow.keras.models import Sequential
+from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten, Activation
 from keras.layers import Conv2D, MaxPooling2D
 from keras.callbacks import TensorBoard
@@ -11,8 +11,8 @@ import random
 import time
 
 def get_session(gpu_fraction=0.85):
-    gpu_options = tf.compat.v1.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction)
-    return tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(gpu_options=gpu_options))
+    gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=gpu_fraction)
+    return tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 backend.set_session(get_session())
 
 model = Sequential()
@@ -126,10 +126,10 @@ for i in range(hm_epochs):
             test_size = 100
             batch_size = 128
 
-            x_train = np.array([i[1] for i in train_data[:-test_size]]).reshape(-1, 176, 200, 3)
+            x_train = np.array([i[1] for i in train_data[:-test_size]]).reshape(-1, 176, 200, 1)
             y_train = np.array([i[0] for i in train_data[:-test_size]])
 
-            x_test = np.array([i[1] for i in train_data[-test_size:]]).reshape(-1, 176, 200 ,3)
+            x_test = np.array([i[1] for i in train_data[-test_size:]]).reshape(-1, 176, 200, 1)
             y_test = np.array([i[0] for i in train_data[-test_size:]])
 
             model.fit(x_train, y_train,
