@@ -37,9 +37,9 @@ model.add(MaxPooling2D(pool_size=(2, 2)))
 model.add(Dropout(0.2))
 
 model.add(Flatten())
-model.add(Dense(1024, activation='relu'))
+model.add(Dense(512, activation='relu'))
 model.add(Dropout(0.5))
-model.add(Dense(14, activation='softmax'))
+model.add(Dense(4, activation='softmax'))
 
 learning_rate = 0.001
 opt = keras.optimizers.adam(lr=learning_rate, decay=1e-6)
@@ -51,6 +51,7 @@ model.compile(loss='categorical_crossentropy',
 tensorboard = TensorBoard(log_dir="logs/STAGE2-{}-{}".format(int(time.time()), learning_rate))
 
 train_data_dir = "train_data"
+
 
 def check_data(choices):
     total_data = 0
@@ -116,7 +117,7 @@ for i in range(hm_epochs):
 
             train_data = []
 
-            for chioce in choices:
+            for choice in choices:
                 for d in choices[choice]:
                     train_data.append(d)
 
@@ -126,10 +127,10 @@ for i in range(hm_epochs):
             test_size = 100
             batch_size = 128
 
-            x_train = np.array([i[1] for i in train_data[:-test_size]]).reshape(-1, 176, 200, 1)
+            x_train = np.array([i[1] for i in train_data[:-test_size]]).reshape(-1, 176, 200, 3)
             y_train = np.array([i[0] for i in train_data[:-test_size]])
 
-            x_test = np.array([i[1] for i in train_data[-test_size:]]).reshape(-1, 176, 200, 1)
+            x_test = np.array([i[1] for i in train_data[-test_size:]]).reshape(-1, 176, 200, 3)
             y_test = np.array([i[0] for i in train_data[-test_size:]])
 
             model.fit(x_train, y_train,
